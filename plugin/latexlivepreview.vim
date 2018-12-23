@@ -68,6 +68,38 @@ except:
 EEOOFF
 endfunction
 
+function! s:RunAndUpdatePagedump(cmd, file)
+    call s:RunInBackground(a:cmd)
+    execute 'source ' . a:file
+endfunction
+
+function! s:Preprocess(file)
+execute s:py_exe "<< EEOOFF"
+with open(vim.eval("a:file"), "r") as f:
+    lines = f.readlines()
+for i in range(len(lines) - 1):
+    lines[i] = '\write\pagedump{\    \\thepage ,}' + lines[i]
+lines[-1] = '\write\pagedump{\    \\thepage ]}' + lines[-1]
+lines.insert(0, '\\newwrite\pagedump\n')
+lines.insert(1, '\openout\pagedump=pagedump.txt\n')
+lines.insert(2, '\write\pagedump{let pagedump = [}')
+lines.append('\closeout\pagedump')
+with open(vim.eval("a:file"), "w") as f:
+    f.writelines(lines)
+EEOOFF
+endfunction
+
+function! g:EvinceGoTo()
+    execute 'source '                   .
+    \ b:livepreview_buf_data['tmp_dir'] .
+    \      expand('%:p:h')              .
+    \      '/pagedump.txt'
+    call system("xdotool key 'ctrl+l'")
+    call system("xdotool key 'ctrl+a'")
+    call system("xdotool key " . g:pagedump[getcurpos()[1]-1])
+    call system("xdotool key KP_Enter")
+endfunction
+
 function! s:Compile()
 
     if !exists('b:livepreview_buf_data') ||
@@ -82,6 +114,7 @@ function! s:Compile()
     " Write the current buffer in a temporary file
     silent exec 'write! ' . b:livepreview_buf_data['tmp_src_file']
 
+    call s:Preprocess(b:livepreview_buf_data['tmp_src_file'])
     call s:RunInBackground(b:livepreview_buf_data['run_cmd'])
 
     lcd -
@@ -265,6 +298,7 @@ endif
 
 unlet! s:init_msg
 
+nnoremap <Leader>e :<C-u>call EvinceGoTo()<CR>
 command! -nargs=* LLPStartPreview call s:StartPreview(<f-args>)
 
 if get(g:, 'livepreview_cursorhold_recompile', 1)
